@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-def get_object_safety_cost(rvec): 
+def get_object_angle_degrees(rvec, world_z_axis): 
     """
     Get the safety cost associated a certain object 
     Method: 
@@ -19,10 +19,12 @@ def get_object_safety_cost(rvec):
             - To gauge the safety we return a sum of the absolute value of the roll and pitch of the object
 
     args: 
-        - object_id: id returned from pybullet's createMultiBody for the object you want to get the cost from 
+        - rvec: rotation vector that you get from cv2.aruco. pose estimation function 
+        - world_z_axis: after calibration define the z axis in the world frame (use an aruco marker to do this)
     returns: 
         - safety_theta: The safety cost of the object in RADIANS
     """
+
     precision = 5 # precision in decimals
 
     rvec = np.array(rvec[0, 0])
@@ -30,13 +32,14 @@ def get_object_safety_cost(rvec):
     rotmat = rotation.as_matrix()
     z_axis = rotmat[:, -1]
 
-    world_z_axis = np.array([0, 0, 1]).reshape(z_axis.shape)
+    # world_z_axis = np.array([0, 0, 1]).reshape(z_axis.shape)
 
     angle = np.arccos(np.round(np.dot(z_axis, world_z_axis), decimals=precision))
     angle_degrees = angle/np.pi * 180
 
-    safety_cost = np.abs(angle_degrees)
-    return safety_cost
+    abs_angle_degrees = np.abs(angle_degrees)
+
+    return abs_angle_degrees
 
 cap = cv2.VideoCapture(0)
 writer = cv2.VideoWriter('test.avi', cv2.VideoWriter_fourcc(*'MJPG'), 30,
@@ -44,6 +47,8 @@ writer = cv2.VideoWriter('test.avi', cv2.VideoWriter_fourcc(*'MJPG'), 30,
 
 matrix_coefficients = np.load("calibration_matrix.npy")
 distortion_coefficients = np.load("distortion_coefficients.npy")
+
+world_z_axis = np.array([0.0128116 , -0.95702334, -0.2897278 ]) # np.array([0, 0, 1])
 
 while True:
     danger = -1
@@ -67,11 +72,11 @@ while True:
             cv2.aruco.drawDetectedMarkers(frame, corners)
             cv2.drawFrameAxes(image=frame,cameraMatrix=matrix_coefficients, distCoeffs=None, rvec=rvec, tvec=tvec, length=0.02, thickness=2	) 
 
-            # Draw Axis
-            # cv2.aruco.drawAxes(frame, matrix_coefficients, distortion_coefficients, rvec, tvec, 0.01)
-            print(rvec)
-            print("euler: ", r_euler_angle)
-            print("Safety cost: ", get_object_safety_cost(rvec=rvec))
+            object_angle_degrees = get_object_angle_degrees(rvec=rvec, world_z_axis=world_z_axis)
+
+            # print("rotmat: ", rotation.as_matrix())
+            print("Angle : ", object_angle_degrees)
+            # print("Safety cost: ", object_safety_cost)
             print("\n")
 
             danger += (rvec[0, 0, 0] ** 2 + rvec[0, 0, 1] ** 2) ** (1 / 2)
@@ -80,6 +85,8 @@ while True:
             # cv2.imshow('test', frame)
             # cv2.waitKey(0)
             # print()
+
+            cv2.putText(frame, str(object_angle_degrees), corners[i][0][0].astype(np.int), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
 
     cv2.putText(frame, str(danger), (0, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
 
