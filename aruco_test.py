@@ -3,6 +3,41 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+def get_object_safety_cost(rvec): 
+    """
+    Get the safety cost associated a certain object 
+    Method: 
+        Coordinate frame: 
+            - x,y axes of the obstacle are in the plane of the obstacle
+            - the z axis points upwards from the obstacle (up from the plane)
+        Tipping angle: 
+            - Get the orientation of the object
+            - Get the z axis of the object frame 
+            - Get the dot product of the z axis of the object frame with the world frame
+            - This gives you the tipping angle between the upright cylinder and the tipped one. 
+        Safety: 
+            - To gauge the safety we return a sum of the absolute value of the roll and pitch of the object
+
+    args: 
+        - object_id: id returned from pybullet's createMultiBody for the object you want to get the cost from 
+    returns: 
+        - safety_theta: The safety cost of the object in RADIANS
+    """
+    precision = 5 # precision in decimals
+
+    rvec = np.array(rvec[0, 0])
+    rotation = R.from_rotvec(rvec)
+    rotmat = rotation.as_matrix()
+    z_axis = rotmat[:, -1]
+
+    world_z_axis = np.array([0, 0, 1]).reshape(z_axis.shape)
+
+    angle = np.arccos(np.round(np.dot(z_axis, world_z_axis), decimals=precision))
+    angle_degrees = angle/np.pi * 180
+
+    safety_cost = np.abs(angle_degrees)
+    return safety_cost
+
 cap = cv2.VideoCapture(0)
 writer = cv2.VideoWriter('test.avi', cv2.VideoWriter_fourcc(*'MJPG'), 30,
                          (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
@@ -30,14 +65,21 @@ while True:
             r_euler_angle = rotation.as_euler('zxy', degrees=True)
             # Draw a square around the markers
             cv2.aruco.drawDetectedMarkers(frame, corners)
+            cv2.drawFrameAxes(image=frame,cameraMatrix=matrix_coefficients, distCoeffs=None, rvec=rvec, tvec=tvec, length=0.02, thickness=2	) 
 
             # Draw Axis
             # cv2.aruco.drawAxes(frame, matrix_coefficients, distortion_coefficients, rvec, tvec, 0.01)
             print(rvec)
             print("euler: ", r_euler_angle)
+            print("Safety cost: ", get_object_safety_cost(rvec=rvec))
             print("\n")
 
             danger += (rvec[0, 0, 0] ** 2 + rvec[0, 0, 1] ** 2) ** (1 / 2)
+
+            # # show the last image and halt if you detect an aruco marker - click on image to proceed
+            # cv2.imshow('test', frame)
+            # cv2.waitKey(0)
+            # print()
 
     cv2.putText(frame, str(danger), (0, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
 
